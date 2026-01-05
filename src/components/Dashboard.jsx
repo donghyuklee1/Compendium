@@ -76,12 +76,32 @@ const Dashboard = ({
       if (event.userId !== currentUser?.uid) {
         return false
       }
-      const eventDate = new Date(event.date)
+      
+      // 날짜 변환
+      let eventDate
+      if (event.date instanceof Date) {
+        eventDate = new Date(event.date)
+      } else if (event.date?.toDate) {
+        eventDate = event.date.toDate()
+      } else if (typeof event.date === 'string') {
+        eventDate = new Date(event.date)
+      } else {
+        return false
+      }
+      
+      // 날짜 비교 (시간 제외)
       const today = new Date()
+      today.setHours(0, 0, 0, 0)
       const weekFromNow = addDays(today, 7)
+      eventDate.setHours(0, 0, 0, 0)
+      
       return eventDate >= today && eventDate <= weekFromNow
     })
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    .sort((a, b) => {
+      const dateA = a.date instanceof Date ? a.date : (a.date?.toDate ? a.date.toDate() : new Date(a.date))
+      const dateB = b.date instanceof Date ? b.date : (b.date?.toDate ? b.date.toDate() : new Date(b.date))
+      return dateA - dateB
+    })
     .slice(0, 5)
 
 
@@ -358,7 +378,7 @@ const Dashboard = ({
                             {event.title}
                           </h3>
                           <div className="flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400 flex-wrap">
-                            <span>{formatDate(new Date(event.date))}</span>
+                            <span>{formatDate(event.date instanceof Date ? event.date : (event.date?.toDate ? event.date.toDate() : new Date(event.date)))}</span>
                             {event.time && <span>• {event.time}</span>}
                             {event.location && (
                               <>

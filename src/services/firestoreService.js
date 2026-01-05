@@ -72,18 +72,49 @@ export const subscribeToUserEvents = (userId, callback) => {
       
       const events = snapshot.docs.map(doc => {
         const data = doc.data()
-        console.log('Firestore에서 읽은 원본 데이터:', data)
+        
+        // 날짜 객체 정규화 (여러 형식 지원)
+        let eventDate
+        if (data.date?.toDate) {
+          // Firestore Timestamp
+          eventDate = data.date.toDate()
+        } else if (data.date instanceof Date) {
+          // 이미 Date 객체
+          eventDate = data.date
+        } else if (typeof data.date === 'string') {
+          // ISO 문자열 또는 yyyy-MM-dd 형식
+          eventDate = new Date(data.date)
+          // 유효하지 않은 날짜인 경우 처리
+          if (isNaN(eventDate.getTime())) {
+            // yyyy-MM-dd 형식인 경우
+            const [year, month, day] = data.date.split('-')
+            if (year && month && day) {
+              eventDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+            }
+          }
+        } else {
+          // 기본값 (오늘)
+          eventDate = new Date()
+        }
         
         const processedEvent = {
           id: doc.id,
           ...data,
-          // 날짜 객체 정규화
-          date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
-          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
-          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt)
+          date: eventDate,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt ? new Date(data.createdAt) : new Date()),
+          updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate() : (data.updatedAt ? new Date(data.updatedAt) : new Date())
         }
         
-        console.log('처리된 이벤트 데이터:', processedEvent)
+        if (import.meta.env.DEV) {
+          console.log('처리된 이벤트:', {
+            id: processedEvent.id,
+            title: processedEvent.title,
+            date: processedEvent.date,
+            dateType: typeof processedEvent.date,
+            isRecurring: processedEvent.isRecurring
+          })
+        }
+        
         return processedEvent
       })
       
@@ -120,7 +151,9 @@ export const subscribeToUserEvents = (userId, callback) => {
 // 이벤트 생성
 export const createEvent = async (eventData, userId) => {
   try {
-    console.log('이벤트 생성 시작:', { eventData, userId })
+    if (import.meta.env.DEV) {
+      console.log('이벤트 생성 시작:', { eventData, userId })
+    }
     
     // Firebase 설정 확인
     if (!db) {
@@ -147,32 +180,53 @@ export const createEvent = async (eventData, userId) => {
       throw new Error('올바른 날짜 형식이 아닙니다.')
     }
     
+    // 날짜를 Date 객체로 정규화 (시간은 00:00:00으로 설정)
+    const normalizedDate = new Date(eventDate)
+    normalizedDate.setHours(0, 0, 0, 0)
+    
     const eventDoc = {
       title: eventData.title,
       description: eventData.description || '',
-      date: eventDate,
+      date: normalizedDate, // Date 객체로 저장 (Firestore가 Timestamp로 변환)
       time: eventData.time || '',
+      endTime: eventData.endTime || '',
+      duration: eventData.duration || null,
       location: eventData.location || '',
       buildingId: eventData.buildingId || '',
       category: eventData.category || 'personal',
       priority: eventData.priority || 'medium',
       userId,
+      isRecurring: eventData.isRecurring || false,
+      recurrenceType: eventData.recurrenceType || 'none',
+      recurrenceEndDate: eventData.recurrenceEndDate || null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }
     
-    console.log('저장할 이벤트 데이터:', eventDoc)
+    if (import.meta.env.DEV) {
+      console.log('저장할 이벤트 데이터:', {
+        ...eventDoc,
+        date: normalizedDate,
+        dateType: typeof normalizedDate
+      })
+    }
     
     const docRef = await addDoc(collection(db, COLLECTIONS.EVENTS), eventDoc)
-    console.log('이벤트 생성 성공, ID:', docRef.id)
-    console.log('생성된 이벤트 문서:', eventDoc)
     
-    // 생성 후 즉시 문서를 다시 읽어서 확인
-    const createdDoc = await getDoc(docRef)
-    if (createdDoc.exists()) {
-      console.log('생성된 문서 확인 성공:', createdDoc.data())
-    } else {
-      console.error('생성된 문서를 찾을 수 없습니다!')
+    if (import.meta.env.DEV) {
+      console.log('이벤트 생성 성공, ID:', docRef.id)
+      
+      // 생성 후 즉시 문서를 다시 읽어서 확인
+      const createdDoc = await getDoc(docRef)
+      if (createdDoc.exists()) {
+        const createdData = createdDoc.data()
+        console.log('생성된 문서 확인:', {
+          id: createdDoc.id,
+          title: createdData.title,
+          date: createdData.date,
+          dateType: typeof createdData.date
+        })
+      }
     }
     
     return docRef.id
@@ -200,13 +254,37 @@ export const createEvent = async (eventData, userId) => {
 // 이벤트 업데이트
 export const updateEvent = async (eventId, eventData) => {
   try {
+    if (!db) {
+      throw new Error('Firestore 데이터베이스가 초기화되지 않았습니다.')
+    }
+    
     const eventRef = doc(db, COLLECTIONS.EVENTS, eventId)
+    
+    // 날짜 객체 정규화
+    const updateData = { ...eventData }
+    if (updateData.date) {
+      let eventDate = updateData.date
+      if (typeof eventDate === 'string') {
+        eventDate = new Date(eventDate)
+      }
+      if (eventDate instanceof Date) {
+        eventDate.setHours(0, 0, 0, 0)
+        updateData.date = eventDate
+      }
+    }
+    
     await updateDoc(eventRef, {
-      ...eventData,
+      ...updateData,
       updatedAt: serverTimestamp()
     })
+    
+    if (import.meta.env.DEV) {
+      console.log('이벤트 업데이트 성공:', eventId)
+    }
   } catch (error) {
-    console.error('이벤트 업데이트 실패:', error)
+    if (import.meta.env.DEV) {
+      console.error('이벤트 업데이트 실패:', error)
+    }
     throw error
   }
 }
@@ -1417,7 +1495,9 @@ export const createRecurringEventsForParticipants = async (meetingId, meetingDat
       
       // 요일이 맞는지 확인
       if (dayOfWeek === schedule.dayOfWeek) {
-        const eventDate = currentDate.toISOString().split('T')[0]
+        // Date 객체로 저장 (Firestore가 자동으로 Timestamp로 변환)
+        const eventDate = new Date(currentDate)
+        eventDate.setHours(0, 0, 0, 0) // 시간을 00:00:00으로 설정
         
         // 각 참여자에 대해 일정 생성
         for (const participant of participants) {
@@ -1425,10 +1505,10 @@ export const createRecurringEventsForParticipants = async (meetingId, meetingDat
             userId: participant.userId,
             title: `${meetingData.title} 모임`,
             description: `정기 모임 - ${meetingData.title}`,
-            date: eventDate,
+            date: eventDate, // Date 객체로 저장
             time: schedule.startTime,
             endTime: schedule.endTime,
-            location: schedule.location,
+            location: schedule.location || '',
             category: 'meeting',
             meetingId: meetingId,
             isRecurring: true,
@@ -1445,15 +1525,33 @@ export const createRecurringEventsForParticipants = async (meetingId, meetingDat
       currentDate.setDate(currentDate.getDate() + daysToAdd)
     }
 
+    // 중복 일정 확인 및 제거 (같은 날짜, 같은 사용자, 같은 모임의 일정)
+    const uniqueEvents = []
+    const eventKeys = new Set()
+    
+    for (const event of events) {
+      const key = `${event.userId}-${event.date.toISOString().split('T')[0]}-${meetingId}`
+      if (!eventKeys.has(key)) {
+        eventKeys.add(key)
+        uniqueEvents.push(event)
+      }
+    }
+    
+    if (import.meta.env.DEV) {
+      console.log(`반복 일정 생성: ${uniqueEvents.length}개 일정 (중복 제거 전: ${events.length}개)`)
+    }
+    
     // 모든 일정을 Firestore에 추가
     const batch = writeBatch(db)
-    events.forEach(event => {
-      const eventRef = doc(collection(db, 'events'))
-      batch.set(eventRef, event)
-    })
+      uniqueEvents.forEach(event => {
+        const eventRef = doc(collection(db, COLLECTIONS.EVENTS))
+        batch.set(eventRef, event)
+      })
     
     await batch.commit()
-    console.log('반복 모임 일정 생성 완료:', events.length, '개 일정')
+    if (import.meta.env.DEV) {
+      console.log('반복 모임 일정 생성 완료:', uniqueEvents.length, '개 일정')
+    }
     
     // 이벤트 구독이 실시간으로 업데이트되도록 약간의 지연 추가
     await new Promise(resolve => setTimeout(resolve, 100))
