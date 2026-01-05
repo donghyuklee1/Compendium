@@ -23,9 +23,9 @@ const Header = ({ view, setView, onAddEvent, onLogin, meetings = [], notificatio
         initial={{ opacity: 0, y: -50 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="sticky top-0 z-50 glass-effect border-b border-white/20"
+        className="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-700"
       >
-        <div className="container mx-auto px-3 py-2 md:px-4 md:py-4">
+        <div className="container mx-auto px-2 py-2 sm:px-4 sm:py-3">
           <div className="flex items-center justify-between">
             {/* Logo and Title - 모바일에서 더 컴팩트하게 */}
             <motion.button

@@ -18,18 +18,22 @@ const validateFirebaseConfig = () => {
   const missingFields = requiredFields.filter(field => !firebaseConfig[field] || firebaseConfig[field].includes('demo-'))
   
   if (missingFields.length > 0) {
-    console.error('❌ Firebase 설정이 완료되지 않았습니다!')
-    console.error('누락된 필드:', missingFields)
-    console.error('해결 방법:')
-    console.error('1. Firebase Console (https://console.firebase.google.com/)에서 프로젝트 생성')
-    console.error('2. 프로젝트 설정 > 일반 탭에서 웹 앱 추가')
-    console.error('3. Firebase SDK 설정에서 설정값 복사')
-    console.error('4. .env.local 파일에 환경 변수 설정')
-    console.error('5. 개발 서버 재시작')
+    if (import.meta.env.DEV) {
+      console.error('❌ Firebase 설정이 완료되지 않았습니다!')
+      console.error('누락된 필드:', missingFields)
+      console.error('해결 방법:')
+      console.error('1. Firebase Console (https://console.firebase.google.com/)에서 프로젝트 생성')
+      console.error('2. 프로젝트 설정 > 일반 탭에서 웹 앱 추가')
+      console.error('3. Firebase SDK 설정에서 설정값 복사')
+      console.error('4. .env.local 파일에 환경 변수 설정')
+      console.error('5. 개발 서버 재시작')
+    }
     return false
   }
   
-  console.log('✅ Firebase 설정이 완료되었습니다!')
+  if (import.meta.env.DEV) {
+    console.log('✅ Firebase 설정이 완료되었습니다!')
+  }
   return true
 }
 
@@ -44,16 +48,18 @@ export const db = getFirestore(app)
 
 // Firebase 연결 상태 확인
 export const checkFirebaseConnection = () => {
-  console.log('Firebase 설정 확인:')
-  console.log('- Project ID:', firebaseConfig.projectId)
-  console.log('- Auth Domain:', firebaseConfig.authDomain)
-  console.log('- API Key:', firebaseConfig.apiKey ? '설정됨' : '누락')
-  console.log('- App ID:', firebaseConfig.appId ? '설정됨' : '누락')
+  if (import.meta.env.DEV) {
+    console.log('Firebase 설정 확인:')
+    console.log('- Project ID:', firebaseConfig.projectId)
+    console.log('- Auth Domain:', firebaseConfig.authDomain)
+    console.log('- API Key:', firebaseConfig.apiKey ? '설정됨' : '누락')
+    console.log('- App ID:', firebaseConfig.appId ? '설정됨' : '누락')
+  }
   
   // 설정 검증 실행
   const isValid = validateFirebaseConfig()
   
-  if (!isValid) {
+  if (!isValid && import.meta.env.DEV) {
     console.warn('⚠️ Firebase가 제대로 설정되지 않아 일부 기능이 작동하지 않을 수 있습니다.')
   }
   
@@ -70,7 +76,9 @@ export const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider)
     return result.user
   } catch (error) {
-    console.error('Google 로그인 오류:', error)
+    if (import.meta.env.DEV) {
+      console.error('Google 로그인 오류:', error)
+    }
     throw error
   }
 }
@@ -79,7 +87,9 @@ export const signOutUser = async () => {
   try {
     await signOut(auth)
   } catch (error) {
-    console.error('로그아웃 오류:', error)
+    if (import.meta.env.DEV) {
+      console.error('로그아웃 오류:', error)
+    }
     throw error
   }
 }

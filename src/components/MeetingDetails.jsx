@@ -1135,48 +1135,120 @@ const MeetingDetails = ({ meeting, currentUser, onBack, onDeleteMeeting }) => {
                       </div>
                     ) : optimalTimes.length > 0 ? (
                       // 제안할 수 있는 시간이 있는 경우
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {optimalTimes.slice(0, 6).map((timeSlot, index) => (
-                          <motion.div
-                            key={index}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg border border-green-200 dark:border-green-700 hover:shadow-md transition-shadow"
-                          >
-                            <div className="flex items-center justify-between mb-3">
-                              <div>
-                                <div className="font-medium text-gray-800 dark:text-white">
-                                  {timeSlot.day} {timeSlot.time}
-                                </div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {timeSlot.availableCount}/{timeSlot.totalParticipants}명 가능
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-lg font-bold ${
-                                  timeSlot.availabilityRate >= 80 ? 'text-green-600 dark:text-green-400' :
-                                  timeSlot.availabilityRate >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
-                                  'text-red-600 dark:text-red-400'
-                                }`}>
-                                  {timeSlot.availabilityRate}%
-                                </div>
-                              </div>
+                      <div className="space-y-3">
+                        {/* 연속 시간 우선 표시 */}
+                        {optimalTimes.filter(t => t.isConsecutive).length > 0 && (
+                          <div>
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                추천: 연속 2시간 가능한 시간
+                              </span>
                             </div>
-                            
-                            {isOwner && (
-                              <motion.button
-                                whileHover={{ scale: 1.05 }}
-                                whileTap={{ scale: 0.95 }}
-                                onClick={() => handleCreateScheduleFromSuggestion(timeSlot)}
-                                disabled={isLoading}
-                                className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                              >
-                                {isLoading ? '생성 중...' : '이 시간으로 일정 생성'}
-                              </motion.button>
-                            )}
-                          </motion.div>
-                        ))}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {optimalTimes.filter(t => t.isConsecutive).slice(0, 6).map((timeSlot, index) => (
+                                <motion.div
+                                  key={`consecutive-${index}`}
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: index * 0.05 }}
+                                  className="p-3 sm:p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-lg border-2 border-green-300 dark:border-green-700 hover:shadow-md transition-shadow"
+                                >
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div className="flex-1">
+                                      <div className="flex items-center space-x-2 mb-1">
+                                        <span className="text-xs px-2 py-0.5 bg-green-500 text-white rounded-full font-medium">
+                                          추천
+                                        </span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                          {timeSlot.consecutiveSlots * 30}분 연속
+                                        </span>
+                                      </div>
+                                      <div className="font-semibold text-gray-800 dark:text-white text-sm sm:text-base">
+                                        {timeSlot.day} {timeSlot.time} - {timeSlot.endTime}
+                                      </div>
+                                      <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                        {timeSlot.availableCount}/{timeSlot.totalParticipants}명 가능
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className={`text-base sm:text-lg font-bold ${
+                                        timeSlot.availabilityRate >= 80 ? 'text-green-600 dark:text-green-400' :
+                                        timeSlot.availabilityRate >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
+                                        'text-orange-600 dark:text-orange-400'
+                                      }`}>
+                                        {timeSlot.availabilityRate}%
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {isOwner && (
+                                    <motion.button
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      onClick={() => handleCreateScheduleFromSuggestion(timeSlot)}
+                                      disabled={isLoading}
+                                      className="w-full px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs sm:text-sm font-medium"
+                                    >
+                                      {isLoading ? '생성 중...' : '이 시간으로 일정 생성'}
+                                    </motion.button>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* 단일 시간 옵션 */}
+                        {optimalTimes.filter(t => !t.isConsecutive).length > 0 && (
+                          <div>
+                            <div className="flex items-center space-x-2 mb-2">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                                기타 가능한 시간
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                              {optimalTimes.filter(t => !t.isConsecutive).slice(0, 8).map((timeSlot, index) => (
+                                <motion.div
+                                  key={`single-${index}`}
+                                  initial={{ opacity: 0, y: 10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: index * 0.05 }}
+                                  className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700 hover:shadow-sm transition-shadow"
+                                >
+                                  <div className="text-center mb-2">
+                                    <div className="font-medium text-gray-800 dark:text-white text-xs sm:text-sm">
+                                      {timeSlot.day} {timeSlot.time}
+                                    </div>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                      {timeSlot.availableCount}/{timeSlot.totalParticipants}명
+                                    </div>
+                                    <div className={`text-sm font-bold mt-1 ${
+                                      timeSlot.availabilityRate >= 80 ? 'text-green-600 dark:text-green-400' :
+                                      timeSlot.availabilityRate >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
+                                      'text-orange-600 dark:text-orange-400'
+                                    }`}>
+                                      {timeSlot.availabilityRate}%
+                                    </div>
+                                  </div>
+                                  
+                                  {isOwner && (
+                                    <motion.button
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      onClick={() => handleCreateScheduleFromSuggestion(timeSlot)}
+                                      disabled={isLoading}
+                                      className="w-full px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium transition-colors disabled:opacity-50"
+                                    >
+                                      선택
+                                    </motion.button>
+                                  )}
+                                </motion.div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       // 제안할 수 있는 시간이 없는 경우

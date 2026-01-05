@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import Header from './components/Header'
 import Footer from './components/Footer'
 import LandingPage from './components/LandingPage'
-import { ToastProvider } from './contexts/ToastContext'
+import { ToastProvider, useToast } from './contexts/ToastContext'
 import { useRealtimeUpdates } from './hooks/useRealtimeUpdates'
 import ErrorBoundary from './components/ErrorBoundary'
 
@@ -76,8 +76,9 @@ const LoadingSpinner = () => (
   </div>
 )
 
-function App() {
+function AppContent() {
   const { user, loading } = useAuth()
+  const toast = useToast()
   const [view, setView] = useState('calendar') // 'calendar', 'schedule', 'campus', 'meetings', 'profile', 'settings'
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [events, setEvents] = useState([])
@@ -115,7 +116,9 @@ function App() {
     
     // 모든 모임 구독 (로그인 여부와 관계없이)
     const unsubscribeMeetings = subscribeToMeetings((meetingsData) => {
-      console.log('App.jsx - 모임 데이터 업데이트:', meetingsData.length, '개')
+      if (import.meta.env.DEV) {
+        console.log('App.jsx - 모임 데이터 업데이트:', meetingsData.length, '개')
+      }
       setMeetings(meetingsData)
       
       // 현재 선택된 모임이 있다면 최신 데이터로 업데이트
@@ -132,8 +135,9 @@ function App() {
     let unsubscribeNotifications = null
     if (user) {
       unsubscribeEvents = subscribeToUserEvents(user.uid, (eventsData) => {
-        console.log('App.jsx - 이벤트 데이터 업데이트:', eventsData.length, '개 이벤트')
-        console.log('App.jsx - 이벤트 목록:', eventsData)
+        if (import.meta.env.DEV) {
+          console.log('App.jsx - 이벤트 데이터 업데이트:', eventsData.length, '개 이벤트')
+        }
         setEvents(eventsData)
       })
       
@@ -160,7 +164,9 @@ function App() {
 
   const addEvent = async (event) => {
     try {
-      console.log('일정 추가 시도:', event)
+      if (import.meta.env.DEV) {
+        console.log('일정 추가 시도:', event)
+      }
       
       // 사용자 인증 확인
       if (!user || !user.uid) {
@@ -176,7 +182,9 @@ function App() {
       const isFirebaseConfigured = checkFirebaseConnection()
       if (!isFirebaseConfigured) {
         // Firebase가 설정되지 않은 경우 로컬 상태에만 저장
-        console.log('Firebase 미설정 - 로컬 상태에 저장')
+        if (import.meta.env.DEV) {
+          console.warn('Firebase 미설정 - 로컬 상태에 저장')
+        }
         const newEvent = {
           ...event,
           id: Date.now().toString(), // 임시 ID
@@ -185,21 +193,24 @@ function App() {
         }
         setEvents(prev => [...prev, newEvent])
         closeEventModal()
-        alert('일정이 임시로 저장되었습니다. Firebase 설정 후 새로고침하면 데이터가 사라질 수 있습니다.')
+        toast.showWarning('일정이 임시로 저장되었습니다. Firebase 설정 후 새로고침하면 데이터가 사라질 수 있습니다.', '임시 저장')
         return
       }
       
       // Firestore에 이벤트 생성
       const eventId = await createEventInFirestore(event, user.uid)
-      console.log('일정 생성 성공, ID:', eventId)
+      if (import.meta.env.DEV) {
+        console.log('일정 생성 성공, ID:', eventId)
+      }
       
       // 성공 메시지
-      alert('일정이 성공적으로 추가되었습니다!')
+      toast.showSuccess('일정이 성공적으로 추가되었습니다!')
       closeEventModal()
       
     } catch (error) {
-      console.error('이벤트 생성 실패:', error)
-      console.error('에러 상세:', error)
+      if (import.meta.env.DEV) {
+        console.error('이벤트 생성 실패:', error)
+      }
       
       // 사용자 친화적인 에러 메시지
       let errorMessage = '일정 생성에 실패했습니다.'
@@ -210,7 +221,9 @@ function App() {
         errorMessage = '네트워크 연결을 확인해주세요.'
       } else if (error.message.includes('Firestore') || error.message.includes('Firebase')) {
         // Firebase 오류인 경우 로컬 상태에 저장
-        console.log('Firebase 오류 - 로컬 상태에 저장')
+        if (import.meta.env.DEV) {
+          console.warn('Firebase 오류 - 로컬 상태에 저장')
+        }
         const newEvent = {
           ...event,
           id: Date.now().toString(),
@@ -219,32 +232,38 @@ function App() {
         }
         setEvents(prev => [...prev, newEvent])
         closeEventModal()
-        alert('일정이 임시로 저장되었습니다. Firebase 설정을 확인해주세요.')
+        toast.showWarning('일정이 임시로 저장되었습니다. Firebase 설정을 확인해주세요.')
         return
       } else if (error.message) {
         errorMessage = error.message
       }
       
-      alert(errorMessage)
+      toast.showError(errorMessage)
     }
   }
 
   const updateEvent = async (updatedEvent) => {
     try {
       await updateEventInFirestore(updatedEvent.id, updatedEvent)
+      toast.showSuccess('일정이 성공적으로 수정되었습니다!')
       closeEventModal()
     } catch (error) {
-      console.error('이벤트 업데이트 실패:', error)
-      alert('이벤트 업데이트에 실패했습니다.')
+      if (import.meta.env.DEV) {
+        console.error('이벤트 업데이트 실패:', error)
+      }
+      toast.showError('이벤트 업데이트에 실패했습니다.')
     }
   }
 
   const deleteEvent = async (eventId) => {
     try {
       await deleteEventInFirestore(eventId)
+      toast.showSuccess('일정이 성공적으로 삭제되었습니다!')
     } catch (error) {
-      console.error('이벤트 삭제 실패:', error)
-      alert('이벤트 삭제에 실패했습니다.')
+      if (import.meta.env.DEV) {
+        console.error('이벤트 삭제 실패:', error)
+      }
+      toast.showError('이벤트 삭제에 실패했습니다.')
     }
   }
 
@@ -270,7 +289,9 @@ function App() {
   // 모임 관련 함수들
   const addMeeting = async (meetingData) => {
     try {
-      console.log('App.jsx - 모임 생성 시작:', { meetingData, userId: user.uid })
+      if (import.meta.env.DEV) {
+        console.log('App.jsx - 모임 생성 시작:', { meetingData, userId: user.uid })
+      }
       
       // 사용자 인증 확인
       if (!user || !user.uid) {
@@ -283,14 +304,17 @@ function App() {
       }
       
       const meetingId = await createMeetingInFirestore(meetingData, user.uid)
-      console.log('App.jsx - 모임 생성 완료, ID:', meetingId)
+      if (import.meta.env.DEV) {
+        console.log('App.jsx - 모임 생성 완료, ID:', meetingId)
+      }
       
       // 성공 메시지
-      alert('모임이 성공적으로 생성되었습니다!')
+      toast.showSuccess('모임이 성공적으로 생성되었습니다!')
       closeMeetingModal()
     } catch (error) {
-      console.error('App.jsx - 모임 생성 실패:', error)
-      console.error('에러 상세:', error)
+      if (import.meta.env.DEV) {
+        console.error('App.jsx - 모임 생성 실패:', error)
+      }
       
       // 사용자 친화적인 에러 메시지
       let errorMessage = '모임 생성에 실패했습니다.'
@@ -302,17 +326,20 @@ function App() {
         errorMessage = error.message
       }
       
-      alert(errorMessage)
+      toast.showError(errorMessage)
     }
   }
 
   const updateMeeting = async (updatedMeeting) => {
     try {
       await updateMeetingInFirestore(updatedMeeting.id, updatedMeeting)
+      toast.showSuccess('모임이 성공적으로 수정되었습니다!')
       closeMeetingModal()
     } catch (error) {
-      console.error('모임 업데이트 실패:', error)
-      alert('모임 업데이트에 실패했습니다.')
+      if (import.meta.env.DEV) {
+        console.error('모임 업데이트 실패:', error)
+      }
+      toast.showError('모임 업데이트에 실패했습니다.')
     }
   }
 
@@ -321,26 +348,28 @@ function App() {
       // Firebase 설정 확인
       const isFirebaseConfigured = checkFirebaseConnection()
       if (!isFirebaseConfigured) {
-        alert('Firebase가 설정되지 않아 모임을 삭제할 수 없습니다.')
+        toast.showError('Firebase가 설정되지 않아 모임을 삭제할 수 없습니다.')
         return
       }
       
       await deleteMeetingInFirestore(meetingId)
-      alert('모임이 성공적으로 삭제되었습니다.')
+      toast.showSuccess('모임이 성공적으로 삭제되었습니다.')
       
       // 모임 세부사항에서 돌아가기
       setShowMeetingDetails(false)
       setSelectedMeeting(null)
     } catch (error) {
-      console.error('모임 삭제 실패:', error)
-      alert('모임 삭제에 실패했습니다: ' + error.message)
+      if (import.meta.env.DEV) {
+        console.error('모임 삭제 실패:', error)
+      }
+      toast.showError('모임 삭제에 실패했습니다: ' + error.message)
     }
   }
 
   const openMeetingModal = (meeting = null) => {
     // 로그인하지 않은 사용자는 모임 생성 불가
     if (!meeting && (!user || !user.uid)) {
-      alert('모임을 생성하려면 로그인이 필요합니다.')
+      toast.showWarning('모임을 생성하려면 로그인이 필요합니다.')
       return
     }
     
@@ -356,38 +385,46 @@ function App() {
   const joinMeeting = async (meeting) => {
     // 로그인하지 않은 사용자는 모임 참여 불가
     if (!user || !user.uid) {
-      alert('모임에 참여하려면 로그인이 필요합니다.')
+      toast.showWarning('모임에 참여하려면 로그인이 필요합니다.')
       return
     }
     
     try {
       await joinMeetingInFirestore(meeting.id, user.uid)
+      toast.showSuccess('모임에 성공적으로 참여했습니다!')
     } catch (error) {
-      console.error('모임 참여 실패:', error)
-      alert('모임 참여에 실패했습니다.')
+      if (import.meta.env.DEV) {
+        console.error('모임 참여 실패:', error)
+      }
+      toast.showError('모임 참여에 실패했습니다.')
     }
   }
 
   const handleAvailabilityChange = async (timeSlotIds) => {
     // 로그인하지 않은 사용자는 시간 조율 불가
     if (!user || !user.uid) {
-      alert('시간 조율을 하려면 로그인이 필요합니다.')
+      toast.showWarning('시간 조율을 하려면 로그인이 필요합니다.')
       return
     }
     
     // timeSlotIds가 배열인지 확인
     if (!Array.isArray(timeSlotIds)) {
-      console.error('timeSlotIds는 배열이어야 합니다:', timeSlotIds)
+      if (import.meta.env.DEV) {
+        console.error('timeSlotIds는 배열이어야 합니다:', timeSlotIds)
+      }
       return
     }
     
     if (selectedMeeting) {
       try {
         await updateAvailabilityInFirestore(selectedMeeting.id, user.uid, timeSlotIds)
+        toast.showSuccess('가용성이 업데이트되었습니다!')
         // selectedMeeting 상태는 실시간 구독을 통해 자동으로 업데이트됨
       } catch (error) {
-        console.error('가용성 업데이트 실패:', error)
-        alert('가용성 업데이트에 실패했습니다.')
+        if (import.meta.env.DEV) {
+          console.error('가용성 업데이트 실패:', error)
+        }
+        toast.showError('가용성 업데이트에 실패했습니다.')
       }
     }
   }
@@ -557,9 +594,7 @@ function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <ToastProvider>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:to-gray-800 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:to-gray-800 flex flex-col">
           <Header
             view={view}
             setView={setView}
@@ -573,13 +608,13 @@ function App() {
             onMarkAllNotificationsAsRead={() => markAllNotificationsAsRead(user?.uid)}
           />
       
-      <main className="container mx-auto px-4 py-8 flex-1">
+      <main className="container mx-auto px-2 sm:px-4 py-3 sm:py-6 flex-1">
         <motion.div
           key={view}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="glass-effect rounded-2xl p-6 shadow-xl"
+          transition={{ duration: 0.3 }}
+          className="rounded-lg sm:rounded-xl p-3 sm:p-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm"
         >
           <Suspense fallback={<LoadingSpinner />}>
             {view === 'calendar' ? (
@@ -594,11 +629,12 @@ function App() {
                   openEventModal({ date })
                 }}
                 onMeetingClick={(meeting) => {
-                  console.log('App.jsx - 모임 클릭 핸들러 호출:', meeting)
+                  if (import.meta.env.DEV) {
+                    console.log('App.jsx - 모임 클릭:', meeting.id)
+                  }
                   setSelectedMeeting(meeting)
                   setShowMeetingDetails(true)
                   setView('meetings') // meetings 뷰로 변경
-                  console.log('App.jsx - 상태 업데이트 완료, 뷰 변경됨')
                 }}
                 onViewChange={setView}
                 currentUser={user}
@@ -674,11 +710,19 @@ function App() {
       )}
 
       {/* Firebase 설정 알림 */}
-      <FirebaseSetupAlert
-        isVisible={showFirebaseSetupAlert}
-        onClose={() => setShowFirebaseSetupAlert(false)}
-      />
-        </div>
+        <FirebaseSetupAlert
+          isVisible={showFirebaseSetupAlert}
+          onClose={() => setShowFirebaseSetupAlert(false)}
+        />
+      </div>
+  )
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppContent />
       </ToastProvider>
     </ErrorBoundary>
   )

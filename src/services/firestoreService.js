@@ -30,19 +30,25 @@ export const COLLECTIONS = {
 export const subscribeToUserEvents = (userId, callback) => {
   try {
     if (!userId) {
-      console.log('사용자 ID가 없어서 이벤트 구독을 중단합니다.')
+      if (import.meta.env.DEV) {
+        console.log('사용자 ID가 없어서 이벤트 구독을 중단합니다.')
+      }
       callback([])
       return () => {}
     }
 
     // Firebase 설정 확인
     if (!db) {
-      console.error('❌ Firestore 데이터베이스가 초기화되지 않았습니다.')
+      if (import.meta.env.DEV) {
+        console.error('❌ Firestore 데이터베이스가 초기화되지 않았습니다.')
+      }
       callback([])
       return () => {}
     }
 
-    console.log('사용자 이벤트 구독 시작:', userId)
+    if (import.meta.env.DEV) {
+      console.log('사용자 이벤트 구독 시작:', userId)
+    }
 
     const q = query(
       collection(db, COLLECTIONS.EVENTS),
@@ -51,10 +57,12 @@ export const subscribeToUserEvents = (userId, callback) => {
     )
 
     return onSnapshot(q, (snapshot) => {
-      console.log('사용자 이벤트 데이터 변경 감지:', snapshot.docs.length, '개 이벤트')
+      if (import.meta.env.DEV) {
+        console.log('사용자 이벤트 데이터 변경 감지:', snapshot.docs.length, '개 이벤트')
+      }
       
       // 변경사항이 있는 경우에만 처리
-      if (snapshot.docChanges().length > 0) {
+      if (snapshot.docChanges().length > 0 && import.meta.env.DEV) {
         console.log('이벤트 변경사항:', snapshot.docChanges().map(change => ({
           type: change.type,
           docId: change.doc.id,
@@ -1000,31 +1008,34 @@ export const getMemberAttendanceRates = (meeting) => {
     .sort((a, b) => b.attendanceRate - a.attendanceRate) // 출석률 높은 순으로 정렬
 }
 
-// 최적의 모임 시간 제안
+// 최적의 모임 시간 제안 (개선된 알고리즘)
 export const getOptimalMeetingTimes = (meeting) => {
-  console.log('getOptimalMeetingTimes called with meeting:', meeting)
+  if (import.meta.env.DEV) {
+    console.log('getOptimalMeetingTimes called with meeting:', meeting)
+  }
   
   if (!meeting?.availability || !meeting?.participants) {
-    console.log('No availability or participants data')
+    if (import.meta.env.DEV) {
+      console.log('No availability or participants data')
+    }
     return []
   }
 
   const participants = meeting.participants.filter(p => p.status === 'approved' || p.status === 'owner')
   const totalParticipants = participants.length
   
-  console.log('Participants:', participants)
-  console.log('Total participants:', totalParticipants)
-  
   if (totalParticipants === 0) {
-    console.log('No approved participants')
+    if (import.meta.env.DEV) {
+      console.log('No approved participants')
+    }
     return []
   }
 
   const timeSlots = []
   const weekDays = ['월', '화', '수', '목', '금']
   
-  // 시간 슬롯 생성 (9시부터 23시까지, 30분 단위)
-  for (let hour = 9; hour <= 23; hour++) {
+  // 시간 슬롯 생성 (9시부터 22시까지, 30분 단위) - 2시간 연속 가능한 시간 찾기
+  for (let hour = 9; hour <= 22; hour++) {
     for (let minute = 0; minute < 60; minute += 30) {
       const timeString = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
       timeSlots.push(timeString)
@@ -1033,43 +1044,117 @@ export const getOptimalMeetingTimes = (meeting) => {
 
   const optimalTimes = []
 
-  // 각 요일별로 최적 시간 계산
+  // 각 요일별로 최적 시간 계산 (연속 시간 고려)
   weekDays.forEach((day, dayIndex) => {
     timeSlots.forEach((time, timeIndex) => {
-      const slotId = `${dayIndex}-${timeIndex}`
-      let availableCount = 0
-
-      // 각 참여자의 가용성 확인
-      participants.forEach(participant => {
-        const userSlots = meeting.availability[participant.userId] || []
-        if (userSlots.includes(slotId)) {
-          availableCount++
+      // 2시간 연속 가능한지 확인 (4개 슬롯 = 2시간)
+      const consecutiveSlots = []
+      let allAvailable = true
+      let totalAvailableCount = 0
+      
+      for (let i = 0; i < 4 && timeIndex + i < timeSlots.length; i++) {
+        const checkSlotId = `${dayIndex}-${timeIndex + i}`
+        let slotAvailableCount = 0
+        
+        participants.forEach(participant => {
+          const userSlots = meeting.availability[participant.userId] || []
+          if (userSlots.includes(checkSlotId)) {
+            slotAvailableCount++
+          }
+        })
+        
+        consecutiveSlots.push({
+          slotId: checkSlotId,
+          time: timeSlots[timeIndex + i],
+          availableCount: slotAvailableCount
+        })
+        
+        totalAvailableCount += slotAvailableCount
+        
+        // 최소 50% 이상 참여자가 가능해야 연속 시간으로 인정
+        if (slotAvailableCount < totalParticipants * 0.5) {
+          allAvailable = false
         }
-      })
-
-      const availabilityRate = totalParticipants > 0 ? (availableCount / totalParticipants) * 100 : 0
-
-      if (availabilityRate >= 20) { // 20% 이상 가능한 시간만 제안 (더 관대하게)
+      }
+      
+      // 연속 2시간이 모두 가능한 경우만 고려
+      if (consecutiveSlots.length === 4 && allAvailable) {
+        const averageAvailabilityRate = (totalAvailableCount / (consecutiveSlots.length * totalParticipants)) * 100
+        
+        // 시간대별 가중치 적용 (오전 10-12시, 오후 2-5시 선호)
+        let timeWeight = 1.0
+        const hour = parseInt(time.split(':')[0])
+        if ((hour >= 10 && hour < 12) || (hour >= 14 && hour < 17)) {
+          timeWeight = 1.2 // 오전/오후 시간대 가중치
+        } else if (hour >= 18) {
+          timeWeight = 0.9 // 저녁 시간대 약간 낮은 가중치
+        }
+        
+        const weightedScore = averageAvailabilityRate * timeWeight
+        
         optimalTimes.push({
           day: day,
           dayIndex: dayIndex,
           time: time,
+          endTime: consecutiveSlots[3].time, // 2시간 후
           timeIndex: timeIndex,
-          slotId: slotId,
-          availableCount: availableCount,
+          slotId: `${dayIndex}-${timeIndex}`,
+          availableCount: Math.round(totalAvailableCount / consecutiveSlots.length), // 평균
           totalParticipants: totalParticipants,
-          availabilityRate: Math.round(availabilityRate)
+          availabilityRate: Math.round(averageAvailabilityRate),
+          weightedScore: Math.round(weightedScore),
+          consecutiveSlots: consecutiveSlots.length,
+          isConsecutive: true
         })
+      } else {
+        // 연속 시간이 안되더라도 단일 시간 슬롯도 고려 (가중치 낮게)
+        const slotId = `${dayIndex}-${timeIndex}`
+        let availableCount = 0
+
+        participants.forEach(participant => {
+          const userSlots = meeting.availability[participant.userId] || []
+          if (userSlots.includes(slotId)) {
+            availableCount++
+          }
+        })
+
+        const availabilityRate = totalParticipants > 0 ? (availableCount / totalParticipants) * 100 : 0
+
+        // 70% 이상 가능한 단일 시간만 제안
+        if (availabilityRate >= 70) {
+          optimalTimes.push({
+            day: day,
+            dayIndex: dayIndex,
+            time: time,
+            endTime: timeSlots[timeIndex + 1] || time, // 다음 30분 또는 동일
+            timeIndex: timeIndex,
+            slotId: slotId,
+            availableCount: availableCount,
+            totalParticipants: totalParticipants,
+            availabilityRate: Math.round(availabilityRate),
+            weightedScore: Math.round(availabilityRate * 0.8), // 연속 시간보다 낮은 가중치
+            consecutiveSlots: 1,
+            isConsecutive: false
+          })
+        }
       }
     })
   })
 
-  // 가용률 높은 순으로 정렬하고 상위 20개만 반환 (더 많은 옵션 제공)
+  // 가중치 점수 순으로 정렬하고 상위 12개만 반환 (연속 시간 우선)
   const result = optimalTimes
-    .sort((a, b) => b.availabilityRate - a.availabilityRate)
-    .slice(0, 20)
+    .sort((a, b) => {
+      // 연속 시간 우선, 그 다음 가중치 점수
+      if (a.isConsecutive !== b.isConsecutive) {
+        return b.isConsecutive - a.isConsecutive
+      }
+      return b.weightedScore - a.weightedScore
+    })
+    .slice(0, 12)
   
-  console.log('Final optimal times result:', result)
+  if (import.meta.env.DEV) {
+    console.log('Final optimal times result:', result)
+  }
   return result
 }
 
@@ -1538,11 +1623,15 @@ export const createMeetingScheduleFromSuggestion = async (meetingId, suggestion,
     // 제안된 날짜 계산 (다음 주 해당 요일)
     const suggestedDate = calculateSuggestedDate(suggestion.dayIndex, suggestion.time)
     
+    // 종료 시간 계산 (연속 시간이 있으면 사용, 없으면 기본 2시간)
+    const endTime = suggestion.endTime || calculateEndTime(suggestion.time, suggestion.isConsecutive ? (suggestion.consecutiveSlots * 30 / 60) : 2)
+    
     // 모임 일정 데이터 생성
     const scheduleData = {
       date: suggestedDate,
       startTime: suggestion.time,
-      endTime: calculateEndTime(suggestion.time, 2), // 기본 2시간
+      endTime: endTime,
+      duration: suggestion.isConsecutive ? (suggestion.consecutiveSlots * 30) : 120, // 분 단위
       location: meetingData.location || '',
       title: `${meetingData.title} 모임`,
       description: `최적 시간 제안으로 생성된 모임 일정`,
@@ -1569,7 +1658,8 @@ export const createMeetingScheduleFromSuggestion = async (meetingId, suggestion,
           description: `최적 시간 제안으로 생성된 모임 일정 - ${meetingData.title}`,
           date: suggestedDate,
           time: suggestion.time,
-          endTime: calculateEndTime(suggestion.time, 2),
+          endTime: endTime,
+          duration: scheduleData.duration,
           location: meetingData.location || '',
           category: 'meeting',
           meetingId: meetingId,

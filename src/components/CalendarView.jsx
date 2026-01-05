@@ -4,11 +4,14 @@ import { ChevronLeft, ChevronRight, Plus, Clock, MapPin, Users, Tag, Calendar as
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, addMonths, subMonths, isToday } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import { createEvent, deleteEvent } from '../services/firestoreService'
+import { useToast } from '../contexts/ToastContext'
 
 const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedDate: propSelectedDate, setSelectedDate: propSetSelectedDate }) => {
+  const toast = useToast()
   // 이벤트 데이터 디버깅
-  console.log('CalendarView - 받은 이벤트 데이터:', events.length, '개 이벤트')
-  console.log('CalendarView - 이벤트 목록:', events)
+  if (import.meta.env.DEV) {
+    console.log('CalendarView - 받은 이벤트 데이터:', events.length, '개 이벤트')
+  }
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(propSelectedDate || new Date())
 
@@ -123,24 +126,28 @@ const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedD
 
   const handleSaveEvent = async () => {
     if (!eventForm.title.trim()) {
-      alert('제목을 입력해주세요.')
+      toast.showWarning('제목을 입력해주세요.')
       return
     }
 
     if (!currentUser || !currentUser.uid) {
-      alert('로그인이 필요합니다. 다시 로그인해주세요.')
+      toast.showWarning('로그인이 필요합니다. 다시 로그인해주세요.')
       return
     }
 
     try {
-      console.log('CalendarView - currentUser:', currentUser)
-      console.log('CalendarView - currentUser.uid:', currentUser.uid)
+      if (import.meta.env.DEV) {
+        console.log('CalendarView - currentUser:', currentUser)
+        console.log('CalendarView - currentUser.uid:', currentUser.uid)
+      }
       const eventData = {
         ...eventForm,
         userId: currentUser.uid,
         createdAt: new Date().toISOString()
       }
-      console.log('CalendarView - eventData:', eventData)
+      if (import.meta.env.DEV) {
+        console.log('CalendarView - eventData:', eventData)
+      }
 
       if (editingEvent) {
         // 기존 이벤트 업데이트 (deleteEvent + createEvent로 구현)
@@ -151,7 +158,7 @@ const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedD
       }
 
       console.log('일정 저장 성공!')
-      alert('일정이 성공적으로 저장되었습니다.')
+      toast.showSuccess('일정이 성공적으로 저장되었습니다.')
       
       setShowEventModal(false)
       setEventForm({
@@ -166,7 +173,7 @@ const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedD
       setEditingEvent(null)
     } catch (error) {
       console.error('일정 저장 실패:', error)
-      alert('일정 저장에 실패했습니다: ' + error.message)
+      toast.showError('일정 저장에 실패했습니다: ' + error.message)
     }
   }
 
@@ -174,9 +181,12 @@ const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedD
     if (window.confirm('정말로 이 일정을 삭제하시겠습니까?')) {
       try {
         await deleteEvent(eventId)
+        toast.showSuccess('일정이 성공적으로 삭제되었습니다.')
       } catch (error) {
-        console.error('일정 삭제 실패:', error)
-        alert('일정 삭제에 실패했습니다: ' + error.message)
+        if (import.meta.env.DEV) {
+          console.error('일정 삭제 실패:', error)
+        }
+        toast.showError('일정 삭제에 실패했습니다: ' + error.message)
       }
     }
   }
