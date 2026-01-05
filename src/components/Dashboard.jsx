@@ -38,14 +38,32 @@ const Dashboard = ({
 
   // 특정 날짜의 일정 필터링 (본인 일정만)
   const getEventsForDate = (date) => {
+    if (!date || !currentUser?.uid) return []
+    
+    const targetDateStr = format(date, 'yyyy-MM-dd')
+    
     const filteredEvents = events.filter(event => {
       // 본인의 일정만 표시
-      if (event.userId !== currentUser?.uid) {
+      if (event.userId !== currentUser.uid) {
         return false
       }
-      const eventDate = new Date(event.date)
-      const isDateMatch = eventDate.toDateString() === date.toDateString()
-      return isDateMatch
+      
+      // event.date가 Date 객체, 문자열, 또는 Timestamp일 수 있음
+      let eventDate
+      if (event.date instanceof Date) {
+        eventDate = event.date
+      } else if (event.date?.toDate) {
+        // Firestore Timestamp
+        eventDate = event.date.toDate()
+      } else if (typeof event.date === 'string') {
+        eventDate = new Date(event.date)
+      } else {
+        return false
+      }
+      
+      // 날짜 비교 (시간 제외)
+      const eventDateStr = format(eventDate, 'yyyy-MM-dd')
+      return eventDateStr === targetDateStr
     })
     
     return filteredEvents
@@ -88,9 +106,10 @@ const Dashboard = ({
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 3)
 
-  // 이번 주 캘린더 데이터
-  const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 }) // 월요일 시작
-  const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 1 })
+  // 이번 주 캘린더 데이터 (오늘 날짜 기준)
+  const today = new Date()
+  const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // 월요일 시작
+  const weekEnd = endOfWeek(today, { weekStartsOn: 1 })
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd })
 
 
@@ -166,6 +185,7 @@ const Dashboard = ({
               {weekDays.map((day, index) => {
                 const dayEvents = getEventsForDate(day)
                 const isSelected = day.toDateString() === selectedDate.toDateString()
+                const isTodayDate = isToday(day)
                 
                 return (
                   <motion.div
@@ -175,20 +195,28 @@ const Dashboard = ({
                     className={`p-2 sm:p-2.5 rounded-lg cursor-pointer transition-all duration-200 ${
                       isSelected
                         ? 'bg-kaist-blue text-white shadow-md'
+                        : isTodayDate
+                        ? 'bg-blue-100 dark:bg-blue-900/30 border-2 border-blue-300 dark:border-blue-700'
                         : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <div className={`text-sm font-medium ${
-                          isSelected ? 'text-white' : 'text-gray-600 dark:text-gray-300'
+                          isSelected ? 'text-white' : isTodayDate ? 'text-blue-700 dark:text-blue-300 font-bold' : 'text-gray-600 dark:text-gray-300'
                         }`}>
                           {format(day, 'E', { locale: ko })}
+                          {isTodayDate && !isSelected && <span className="ml-1 text-xs">(오늘)</span>}
                         </div>
                         <div className={`text-lg font-bold ${
-                          isSelected ? 'text-white' : 'text-gray-800 dark:text-white'
+                          isSelected ? 'text-white' : isTodayDate ? 'text-blue-800 dark:text-blue-200' : 'text-gray-800 dark:text-white'
                         }`}>
                           {format(day, 'd')}
+                        </div>
+                        <div className={`text-xs mt-0.5 ${
+                          isSelected ? 'text-blue-100' : isTodayDate ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {format(day, 'M월 d일', { locale: ko })}
                         </div>
                       </div>
                       {dayEvents.length > 0 && (

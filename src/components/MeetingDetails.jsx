@@ -420,26 +420,43 @@ const MeetingDetails = ({ meeting, currentUser, onBack, onDeleteMeeting }) => {
     }
   }
 
-  // 실시간 출석 상태 업데이트를 위한 타이머
+  // 실시간 출석 상태 업데이트를 위한 타이머 (개선)
   useEffect(() => {
-    if (attendanceStatus?.isActive && attendanceStatus?.endTime) {
-      const interval = setInterval(() => {
-        const status = getAttendanceStatus(meeting)
+    if (!meeting) return
+    
+    const interval = setInterval(() => {
+      const status = getAttendanceStatus(meeting)
+      
+      // 상태가 변경되었을 때만 업데이트
+      if (JSON.stringify(status) !== JSON.stringify(attendanceStatus)) {
         setAttendanceStatus(status)
         
-        if (status.isActive && status.endTime) {
-          const endTime = new Date(status.endTime)
-          const now = new Date()
-          const remaining = Math.max(0, Math.floor((endTime - now) / 1000))
-          setTimeLeft(remaining)
-        } else {
-          setTimeLeft(0)
+        // 출석 코드 자동 업데이트
+        if (status.isActive && meeting.attendanceCheck?.code) {
+          setAttendanceCode(meeting.attendanceCheck.code)
+        } else if (!status.isActive) {
+          setAttendanceCode('')
         }
-      }, 1000) // 1초마다 업데이트
+      }
+      
+      // 타이머 업데이트
+      if (status.isActive && status.endTime) {
+        const endTime = new Date(status.endTime)
+        const now = new Date()
+        const remaining = Math.max(0, Math.floor((endTime - now) / 1000))
+        setTimeLeft(remaining)
+        
+        // 시간이 만료되면 자동 종료
+        if (remaining === 0 && status.isActive) {
+          handleEndAttendance()
+        }
+      } else {
+        setTimeLeft(0)
+      }
+    }, 1000) // 1초마다 업데이트
 
-      return () => clearInterval(interval)
-    }
-  }, [meeting, attendanceStatus?.isActive])
+    return () => clearInterval(interval)
+  }, [meeting, attendanceStatus])
 
   const participantSummary = getParticipantSummary()
 
@@ -697,7 +714,7 @@ const MeetingDetails = ({ meeting, currentUser, onBack, onDeleteMeeting }) => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="glass-effect rounded-2xl p-4 md:p-6 shadow-xl mb-6"
+          className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 border border-gray-200 dark:border-gray-700 mb-4 sm:mb-6"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
             {/* 기본 정보 */}
@@ -817,11 +834,124 @@ const MeetingDetails = ({ meeting, currentUser, onBack, onDeleteMeeting }) => {
           )}
         </motion.div>
 
+        {/* 참여자 목록 카드 */}
+        {meeting?.participants && meeting.participants.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 border border-gray-200 dark:border-gray-700 mb-4 sm:mb-6"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base md:text-lg font-semibold text-gray-800 dark:text-white flex items-center">
+                <Users className="w-4 h-4 md:w-5 md:h-5 mr-2 text-purple-600 dark:text-purple-400" />
+                참여자 목록
+              </h3>
+              <span className="text-xs md:text-sm text-gray-500 dark:text-gray-400">
+                총 {meeting.participants.filter(p => p.status === 'approved' || p.status === 'owner').length}명
+              </span>
+            </div>
+            
+            <div className="space-y-2">
+              {/* 승인된 참여자 */}
+              {meeting.participants
+                .filter(p => p.status === 'approved' || p.status === 'owner')
+                .map((participant, index) => (
+                  <motion.div
+                    key={participant.userId || index}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 flex-1 min-w-0">
+                      <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                        participant.status === 'owner' 
+                          ? 'bg-purple-500 text-white' 
+                          : 'bg-blue-500 text-white'
+                      }`}>
+                        <User className="w-4 h-4 md:w-5 md:h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center space-x-2">
+                          <p className="font-medium text-sm md:text-base text-gray-800 dark:text-white truncate">
+                            {participant.displayName || participant.email || participant.userId || '알 수 없음'}
+                          </p>
+                          {participant.status === 'owner' && (
+                            <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs rounded-full font-medium">
+                              모임장
+                            </span>
+                          )}
+                        </div>
+                        {participant.email && participant.email !== participant.displayName && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                            {participant.email}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {participant.status === 'owner' && (
+                      <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                    )}
+                  </motion.div>
+                ))}
+              
+              {/* 대기 중인 참가 신청 */}
+              {meeting.participants.filter(p => p.status === 'pending').length > 0 && isOwner && (
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    대기 중인 참가 신청 ({meeting.participants.filter(p => p.status === 'pending').length}명)
+                  </h4>
+                  {meeting.participants
+                    .filter(p => p.status === 'pending')
+                    .map((participant, index) => (
+                      <div
+                        key={participant.userId || index}
+                        className="flex items-center justify-between p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg mb-2"
+                      >
+                        <div className="flex items-center space-x-3 flex-1 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-yellow-500 text-white flex items-center justify-center flex-shrink-0">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm text-gray-800 dark:text-white truncate">
+                              {participant.displayName || participant.email || participant.userId || '알 수 없음'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleJoinRequestAction(participant.userId, 'approve')}
+                            disabled={isLoading}
+                            className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            승인
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => handleJoinRequestAction(participant.userId, 'reject')}
+                            disabled={isLoading}
+                            className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white text-xs rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            거부
+                          </motion.button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="glass-effect rounded-2xl p-6 shadow-xl"
+          className="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl p-4 sm:p-5 border border-gray-200 dark:border-gray-700"
         >
           {/* Tab Navigation */}
           <div className="mb-8">

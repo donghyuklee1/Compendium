@@ -56,18 +56,38 @@ const CalendarView = ({ events, onEventClick, onAddEvent, currentUser, selectedD
   const endDate = endOfWeek(monthEnd, { weekStartsOn: 1 })
 
   const getEventsForDate = (date) => {
-    console.log('getEventsForDate 호출:', format(date, 'yyyy-MM-dd'))
-    console.log('현재 사용자 ID:', currentUser?.uid)
-    console.log('전체 이벤트:', events)
+    if (!date || !currentUser?.uid) return []
+    
+    const targetDateStr = format(date, 'yyyy-MM-dd')
     
     const filteredEvents = events.filter(event => {
-      const isUserMatch = event.userId === currentUser?.uid
-      const isDateMatch = isSameDay(new Date(event.date), date)
-      console.log(`이벤트 ${event.title}: userId=${event.userId}, date=${event.date}, 사용자매치=${isUserMatch}, 날짜매치=${isDateMatch}`)
-      return isUserMatch && isDateMatch
+      // 본인의 일정만 표시
+      if (event.userId !== currentUser.uid) {
+        return false
+      }
+      
+      // event.date가 Date 객체, 문자열, 또는 Timestamp일 수 있음
+      let eventDate
+      if (event.date instanceof Date) {
+        eventDate = event.date
+      } else if (event.date?.toDate) {
+        // Firestore Timestamp
+        eventDate = event.date.toDate()
+      } else if (typeof event.date === 'string') {
+        eventDate = new Date(event.date)
+      } else {
+        return false
+      }
+      
+      // 날짜 비교 (시간 제외)
+      const eventDateStr = format(eventDate, 'yyyy-MM-dd')
+      return eventDateStr === targetDateStr
     })
     
-    console.log('필터링된 이벤트:', filteredEvents)
+    if (import.meta.env.DEV) {
+      console.log(`CalendarView - ${targetDateStr} 일정:`, filteredEvents.length, '개')
+    }
+    
     return filteredEvents
   }
 

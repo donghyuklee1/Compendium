@@ -73,9 +73,17 @@ const TimeCoordination = ({ meeting, currentUser, onAvailabilityChange, onBack, 
 
   const timeSlots = generateTimeSlots()
 
-  // 요일별 시간 슬롯 생성
+  // 요일별 시간 슬롯 생성 (실제 날짜 사용)
   const weekDays = ['월', '화', '수', '목', '금']
-  const weekDates = ['12.31', '01.01', '01.02', '01.03', '01.04'] // 예시 날짜
+  const today = new Date()
+  const weekStart = new Date(today)
+  weekStart.setDate(today.getDate() - today.getDay() + 1) // 월요일로 설정
+  
+  const weekDates = weekDays.map((_, index) => {
+    const date = new Date(weekStart)
+    date.setDate(weekStart.getDate() + index)
+    return format(date, 'M.dd', { locale: ko })
+  })
 
   // 시간 슬롯 선택/해제
   const toggleTimeSlot = (dayIndex, slotId) => {
